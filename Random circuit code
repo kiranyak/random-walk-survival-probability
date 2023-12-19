@@ -1,0 +1,133 @@
+from qiskit import QuantumCircuit, QuantumRegister
+from qiskit.extensions import UnitaryGate
+import random
+from itertools import chain
+from qiskit import QuantumCircuit, assemble, Aer, execute
+from qiskit import QuantumCircuit, transpile
+from qiskit.tools.jupyter import *
+from qiskit.visualization import *
+from ibm_quantum_widgets import *
+import matplotlib.pyplot as plt
+import pandas as pd
+
+def random_Circuit(num_qubits, depth, max_operands=2, seed=None, random_gates=[]):
+    circuit = QuantumCircuit(num_qubits)
+    random.seed(seed)
+    
+    range_1 = range(0, round(0.4 * depth))
+    range_2 = range(round(0.6 * depth), depth)
+    
+    for _ in chain(range_1, range_2):
+        for i in range(num_qubits):
+            random_gate = random.choice(random_gates)
+            if random_gate == 'h':
+                circuit.h(i)
+            elif random_gate == 's':
+                circuit.s(i)
+            elif random_gate == 'x':
+                circuit.x(i)
+            elif random_gate == 'y':
+                circuit.y(i)
+            elif random_gate == 'z':
+                circuit.z(i)
+            elif random_gate == 'i':
+                circuit.i(i) 
+            elif random_gate == 'cx':
+                if i != num_qubits - 1:
+                    circuit.cx(i, i+1)
+                else:
+                    circuit.cx(i, i-1)
+    
+    return circuit
+
+def random_Circuit_with_T(num_qubits, depth, max_operands=2, seed=None, random_gates_t=[]):
+    circuit = QuantumCircuit(num_qubits)
+    t_count = 0
+    t_gates = 5
+    
+    random.seed(seed)
+    
+    for _ in range(round(0.4 * depth), round(0.6 * depth)):
+        while t_count < t_gates:
+            x = random.randint(0, num_qubits - 1)
+            circuit.t(x)
+            t_count += 1
+        
+        for i in range(num_qubits):
+            random_gate = random.choice(random_gates)    
+            if random_gate == 'h':
+                circuit.h(i)
+            elif random_gate == 's':
+                circuit.s(i)
+            elif random_gate == 'x':
+                circuit.x(i)
+            elif random_gate == 'y':
+                circuit.y(i)
+            elif random_gate == 'z':
+                circuit.z(i)
+            elif random_gate == 'i':
+                circuit.i(i) 
+            elif random_gate == 'cx':
+                if i != num_qubits - 1:
+                    circuit.cx(i, i+1)
+                else:
+                    circuit.cx(i, i-1) 
+
+    return circuit
+
+# Define the number of experiments
+num_experiments = 1000
+results = []
+
+for _ in range(num_experiments):
+    num_qubits = 8
+    depth = 7
+    random_gates = ['h', 's', 't', 'cx', 'cx']
+    random_gates_t = ['h', 's', 't', 't', 'cx']
+    
+    circuit_1 = QuantumCircuit(num_qubits)
+    circuit_2 = QuantumCircuit(num_qubits)
+    circuit_3 = QuantumCircuit(num_qubits)
+    combined_circuit = QuantumCircuit(num_qubits)
+    
+    circuit_2.compose(random_Circuit_with_T(num_qubits, depth, random_gates_t=random_gates_t), inplace=True)
+    circuit_1.compose(random_Circuit(num_qubits, depth, random_gates=random_gates), inplace=True)
+    circuit_3.compose(random_Circuit(num_qubits, depth, random_gates=random_gates), inplace=True)
+    
+    combined_circuit.compose(circuit_1, inplace=True)
+    combined_circuit.compose(circuit_2, inplace=True)
+    combined_circuit.compose(circuit_3, inplace=True)
+    
+  
+    backend = Aer.get_backend('statevector_simulator')
+    job = execute(combined_circuit, backend, shots=100000)
+    result = job.result()
+    output_state = result.get_statevector(combined_circuit)
+    survival_probability = abs(output_state[0]) ** 2
+    
+
+    results.append({
+        't_gate_count': sum([1 for instr, qargs, _ in combined_circuit.data if instr.name == 't']),
+        'survival_probability': survival_probability
+    })
+
+
+results_df = pd.DataFrame(results)
+
+
+results_df.to_excel('experiment_results_5.xlsx', index=False)
+
+plt.figure(figsize=(10, 8))
+n, bins, patches = plt.hist(results_df['survival_probability'], bins=10, alpha=0.7, histtype='bar')
+
+plt.xlabel('Survival Probability')
+plt.ylabel('Frequency')
+plt.title('Distribution of Survival Probabilities with 5 t-gates')
+
+# Add count labels on top of each bar
+for count, rect in zip(n, patches):
+    plt.text(rect.get_x() + rect.get_width() / 2, rect.get_height(), f'{int(count)}', ha='center', va='bottom')
+
+# Save the plot
+plt.savefig('survival_probability_plot with 5 t-gates.png')
+plt.close()
